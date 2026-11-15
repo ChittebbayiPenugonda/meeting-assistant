@@ -106,7 +106,7 @@ export function SettingsSheet({
           Speech recognition
           <select value={s.stt} disabled={listening} onChange={(e) => set('stt', e.target.value as SttProvider)}>
             <option value="webspeech">Safari built-in (free)</option>
-            <option value="deepgram">Deepgram (more accurate, needs key)</option>
+            <option value="deepgram">Deepgram (tells you and them apart; needs key)</option>
           </select>
         </label>
         {listening && <small className="hint">Stop listening to change the recognizer.</small>}

@@ -7,16 +7,22 @@ import type { SpeechEngine } from './speech/types'
 import { fileToDataUrl } from './images'
 import { AnswerCard, type Exchange } from './components/AnswerCard'
 import { SettingsSheet } from './components/SettingsSheet'
+import { TranscriptView } from './components/TranscriptView'
+import { toText, type Seg } from './transcript'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 const wordCount = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0)
+const ENROLL_MS = 5000
+const NO_SEG: Seg = { text: '' }
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings)
   const [showSettings, setShowSettings] = useState(() => !loadSettings().apiKey)
   const [listening, setListening] = useState(false)
-  const [finals, setFinals] = useState<string[]>([])
-  const [interim, setInterim] = useState('')
+  const [finals, setFinals] = useState<Seg[]>([])
+  const [interim, setInterim] = useState<Seg>(NO_SEG)
+  const [me, setMeState] = useState<string | null>(null)
+  const [enrolling, setEnrolling] = useState(false)
   const [checking, setChecking] = useState<false | string>(false)
   const [exchanges, setExchanges] = useState<Exchange[]>([])
   const [text, setText] = useState('')
@@ -26,8 +32,10 @@ export default function App() {
 
   const settingsRef = useRef(settings)
   settingsRef.current = settings
-  const finalsRef = useRef<string[]>([])
-  const interimRef = useRef('')
+  const finalsRef = useRef<Seg[]>([])
+  const interimRef = useRef<Seg>(NO_SEG)
+  const meRef = useRef<string | null>(null) // which speaker id is the user
+  const enrollRef = useRef<Map<string, number> | null>(null) // word counts per speaker while learning your voice
   const exchangesRef = useRef<Exchange[]>([])
   exchangesRef.current = exchanges
   const engineRef = useRef<SpeechEngine | null>(null)
@@ -54,7 +62,19 @@ export default function App() {
       .reverse() // state is newest-first
       .map((x) => ({ kind: x.kind, question: x.question, images: x.images, answer: x.answer }))
 
-  const fullTranscript = () => [...finalsRef.current, interimRef.current].filter(Boolean).join(' ')
+  const fullTranscript = () => toText([...finalsRef.current, interimRef.current], meRef.current)
+
+  const setMe = (spk: string | null) => {
+    meRef.current = spk
+    setMeState(spk)
+  }
+
+  // Speech from the other side only. Your own lines never trigger an answer.
+  const othersText = (segs: Seg[]) =>
+    segs
+      .filter((x) => x.text && !(x.spk && x.spk === meRef.current))
+      .map((x) => x.text)
+      .join(' ')
 
   // ---------- automatic question detection ----------
 
@@ -71,8 +91,12 @@ export default function App() {
       return
     }
     const startIdx = consumedRef.current
-    const newSpeech = [...finalsRef.current.slice(startIdx), interimRef.current].filter(Boolean).join(' ')
-    if (wordCount(newSpeech) < 3) return
+    const newSpeech = othersText([...finalsRef.current.slice(startIdx), interimRef.current])
+    if (wordCount(newSpeech) < 3) {
+      // Nothing (or only you) new; skip without spending a request.
+      if (!othersText(finalsRef.current.slice(startIdx))) consumedRef.current = finalsRef.current.length
+      return
+    }
     consumedRef.current = finalsRef.current.length
 
     const id = uid()
@@ -182,16 +206,24 @@ export default function App() {
   const startListening = async () => {
     const s = settingsRef.current
     setBanner(null)
+    const countForEnroll = (t: string, spk?: string) => {
+      if (enrollRef.current && spk) enrollRef.current.set(spk, (enrollRef.current.get(spk) ?? 0) + wordCount(t))
+    }
     const handlers = {
-      onInterim: (t: string) => {
-        interimRef.current = t
-        setInterim(t)
-        if (t) onSpeechActivity(false)
+      onInterim: (t: string, spk?: string) => {
+        const seg = t ? { text: t, spk } : NO_SEG
+        interimRef.current = seg
+        setInterim(seg)
+        // Don't schedule checks while you're the one talking.
+        if (t && !(spk && spk === meRef.current)) onSpeechActivity(false)
       },
-      onFinal: (t: string) => {
-        finalsRef.current = [...finalsRef.current, t]
+      onFinal: (t: string, spk?: string) => {
+        // After a reconnect Deepgram renumbers speakers, so "me" must be picked again.
+        if (spk && meRef.current && spk.split(':')[0] !== meRef.current.split(':')[0]) setMe(null)
+        countForEnroll(t, spk)
+        finalsRef.current = [...finalsRef.current, { text: t, spk }]
         setFinals(finalsRef.current)
-        onSpeechActivity(true)
+        if (!(spk && spk === meRef.current)) onSpeechActivity(true)
       },
       onError: (m: string) => setBanner(m),
       onState: (on: boolean) => {
@@ -214,6 +246,8 @@ export default function App() {
       engine = createWebSpeech(s.lang, handlers)
     }
     engineRef.current = engine
+    // Speaker ids are per connection; a new session means asking again.
+    setMe(null)
     wantListenRef.current = true
     setListening(true)
     acquireWakeLock()
@@ -225,8 +259,10 @@ export default function App() {
     engineRef.current?.stop()
     engineRef.current = null
     setListening(false)
-    setInterim('')
-    interimRef.current = ''
+    setInterim(NO_SEG)
+    interimRef.current = NO_SEG
+    enrollRef.current = null
+    setEnrolling(false)
     wakeLock.current?.release?.().catch(() => {})
     wakeLock.current = null
   }
@@ -291,6 +327,21 @@ export default function App() {
     }
   }
 
+  // "Learn my voice": for a few seconds, whoever talks most is you.
+  const enroll = () => {
+    enrollRef.current = new Map()
+    setEnrolling(true)
+    window.setTimeout(() => {
+      const counts = enrollRef.current
+      enrollRef.current = null
+      setEnrolling(false)
+      if (!counts) return
+      const best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]
+      if (best) setMe(best[0])
+      else setBanner("Didn't catch your voice. Try again, speaking a full sentence, or tap a label in the transcript.")
+    }, ENROLL_MS)
+  }
+
   const clearSession = () => {
     autoRef.current?.handle.abort()
     autoRef.current = null
@@ -301,10 +352,18 @@ export default function App() {
     setShowSettings(false)
   }
 
-  const transcriptTail = (() => {
-    const all = finals.join(' ')
-    return all.length > 220 ? '…' + all.slice(-220) : all
-  })()
+  const canDiarize = listening && settings.stt === 'deepgram'
+  const speakerHint = !canDiarize ? null : enrolling ? (
+    <div className="hint live">Say a sentence or two now so I learn your voice…</div>
+  ) : !me ? (
+    <div className="hint" onClick={(e) => e.stopPropagation()}>
+      Which voice is yours?{' '}
+      <button className="link" onClick={enroll}>
+        Learn my voice
+      </button>{' '}
+      or tap your label below.
+    </div>
+  ) : null
 
   const canSend = !!text.trim() || images.length > 0
 
@@ -327,20 +386,17 @@ export default function App() {
         </button>
       </header>
 
-      <button className="transcript" onClick={() => setShowTranscript((v) => !v)}>
-        {checking && <span className="checking">{checking}</span>}
-        {showTranscript ? (
-          <span className="full">{finals.join(' ')}</span>
-        ) : (
-          <span>{transcriptTail}</span>
-        )}
-        {interim && <span className="interim"> {interim}</span>}
-        {!finals.length && !interim && (
-          <span className="muted">
-            {listening ? 'Listening… put the phone near your laptop speaker.' : 'Tap Start listening when the call begins.'}
-          </span>
-        )}
-      </button>
+      <TranscriptView
+        finals={finals}
+        interim={interim}
+        me={me}
+        expanded={showTranscript}
+        onToggle={() => setShowTranscript((v) => !v)}
+        onPickMe={(spk) => setMe(spk === me ? null : spk)}
+        status={checking}
+        hint={speakerHint}
+        placeholder={listening ? 'Listening… put the phone near your laptop speaker.' : 'Tap Start listening when the call begins.'}
+      />
 
       {banner && (
         <div className="banner" onClick={() => setBanner(null)}>

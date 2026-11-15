@@ -5,7 +5,7 @@ export const NO_QUESTION = 'NO_QUESTION'
 
 const SYSTEM = `You are a real-time meeting copilot. The user is on a live call and glances at your answers on their phone while talking, so every answer must be fast to read and immediately usable.
 
-The transcript comes from a phone microphone sitting next to the user's laptop. It mixes the other participants and the user with no speaker labels, and it has speech-recognition errors. Infer the intended words, especially technical terms that were misheard.
+The transcript comes from a phone microphone sitting next to the user's laptop, and it has speech-recognition errors. Infer the intended words, especially technical terms that were misheard. Lines may be labeled by automatic speaker detection: "Me:" is the user, "Them:" is the other side, and "Speaker N:" means the user hasn't said which voice is theirs yet. Labels are occasionally wrong. Without labels, the transcript mixes everyone.
 
 Answer format:
 - First line exactly: "Q: " followed by the question restated in 12 words or fewer.

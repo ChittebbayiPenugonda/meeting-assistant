@@ -62,12 +62,24 @@ input, select, textarea { font: inherit; font-size: 16px; color: var(--text); }
 
 /* transcript strip */
 .transcript {
-  display: block; text-align: left; margin: 0 16px 8px; padding: 10px 12px;
+  display: block; text-align: left; margin: 0 16px 8px; padding: 10px 12px; cursor: pointer;
   background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
   font-size: 14px; line-height: 1.45; color: var(--text);
   max-height: 30dvh; overflow-y: auto;
 }
+.transcript .seg { margin: 2px 0; }
+.transcript .seg.mine { color: var(--muted); }
 .transcript .interim { color: var(--muted); }
+.who {
+  display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  padding: 1px 6px; margin-right: 6px; border-radius: 6px; vertical-align: 1px;
+  color: var(--heard); background: color-mix(in srgb, var(--heard) 14%, transparent);
+}
+.who.me { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.who.ghost { opacity: .6; }
+.hint { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.hint.live { color: var(--accent); font-weight: 600; }
+.link { color: var(--accent); font-weight: 600; text-decoration: underline; font-size: 13px; }
 .transcript .muted { color: var(--muted); }
 .transcript .checking {
   display: block; font-size: 12px; color: var(--heard); margin-bottom: 2px;

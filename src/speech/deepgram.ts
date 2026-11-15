@@ -29,6 +29,26 @@ export function createDeepgram(apiKey: string, lang: string, h: SpeechHandlers):
   let keepAlive: number | undefined
   let wanted = false
   let retries = 0
+  // Deepgram numbers speakers per connection, so ids are scoped to it.
+  let epoch = 0
+
+  interface Word {
+    word: string
+    punctuated_word?: string
+    speaker?: number
+  }
+  // Splits a result into consecutive runs of one speaker.
+  function runs(words: Word[]): { text: string; speaker?: string }[] {
+    const out: { text: string; speaker?: string }[] = []
+    for (const w of words) {
+      const spk = w.speaker == null ? undefined : `${epoch}:${w.speaker}`
+      const token = w.punctuated_word ?? w.word
+      const last = out[out.length - 1]
+      if (last && last.speaker === spk) last.text += ' ' + token
+      else out.push({ text: token, speaker: spk })
+    }
+    return out
+  }
 
   async function openAudio() {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -63,10 +83,12 @@ export function createDeepgram(apiKey: string, lang: string, h: SpeechHandlers):
       smart_format: 'true',
       punctuate: 'true',
       endpointing: '400',
+      diarize: 'true',
     })
     ws = new WebSocket(`wss://api.deepgram.com/v1/listen?${params}`, ['token', apiKey])
     ws.onopen = () => {
       retries = 0
+      epoch++
       h.onState(true)
       keepAlive = window.setInterval(() => {
         if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'KeepAlive' }))
@@ -76,12 +98,14 @@ export function createDeepgram(apiKey: string, lang: string, h: SpeechHandlers):
       try {
         const msg = JSON.parse(e.data)
         if (msg.type !== 'Results') return
-        const text: string = msg.channel?.alternatives?.[0]?.transcript ?? ''
+        const alt = msg.channel?.alternatives?.[0]
+        const text: string = alt?.transcript ?? ''
+        const parts = alt?.words?.length ? runs(alt.words) : [{ text }]
         if (msg.is_final) {
           h.onInterim('')
-          if (text.trim()) h.onFinal(text.trim())
+          for (const r of parts) if (r.text.trim()) h.onFinal(r.text.trim(), r.speaker)
         } else {
-          h.onInterim(text)
+          h.onInterim(text, parts[parts.length - 1]?.speaker)
         }
       } catch {}
     }
