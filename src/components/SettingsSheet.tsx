@@ -74,6 +74,22 @@ export function SettingsSheet({
           </label>
         )}
 
+        <label className="check">
+          <input type="checkbox" checked={s.think} onChange={(e) => set('think', e.target.checked)} />
+          <span>
+            Think before answering
+            <small>Better on hard problems, but adds a delay before the first word. Opus always thinks.</small>
+          </span>
+        </label>
+
+        <label className="check">
+          <input type="checkbox" checked={s.webSearch} onChange={(e) => set('webSearch', e.target.checked)} />
+          <span>
+            Web search
+            <small>Claude can search and read pages when a question needs current facts. $10 per 1,000 searches.</small>
+          </span>
+        </label>
+
         <label>
           About me and this call
           <textarea

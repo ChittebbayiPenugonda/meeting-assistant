@@ -10,7 +10,7 @@ It's a static web app hosted on GitHub Pages. There's no server and nothing runs
 laptop speaker ──► iPhone mic ──► speech-to-text ──► transcript
                                    (Safari or Deepgram)     │
                                                             ▼
-                          pause in speech (≈1.3s) ──► Claude: "is there a new question here?"
+                          pause (0.8s, or 0.25s after "?") ──► Claude: "is there a new question here?"
                                                             │
                                     NO_QUESTION ◄───────────┤ (discarded)
                                                             ▼
@@ -39,9 +39,11 @@ Safari's speech recognition generally doesn't work in a Home Screen web app on i
 |---|---|---|
 | Model | Sonnet 5.5 | Opus 5.5 is smarter but slower; Haiku 5.5 is fastest and cheapest |
 | Thinking effort | Low | Raise it for hard coding problems |
+| Think before answering | Off | Better on hard problems, but delays the first word. Opus always thinks |
+| Web search | On | Claude searches or reads a pasted URL only when a question needs current facts ($10 per 1,000 searches). An org admin may need to allow web search in the Anthropic Console |
 | Fast mode | Off | Opus only, up to 2.5× faster output at 2× the price |
 | Auto | On | Turn it off to answer only when you tap **Answer** |
-| Pause | 1.3s | How long a silence counts as the end of a question |
+| Pause | 0.8s | How long a silence counts as the end of a question. A sentence ending in "?" triggers after 0.25s |
 
 **Cost.** Every pause in the conversation is one small Claude request. The system prompt is cached, and requests with nothing to answer stop after a few tokens. Haiku 5.5 is by far the cheapest choice if you'll use it for hours.
 

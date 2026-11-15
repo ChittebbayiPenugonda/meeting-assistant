@@ -17,7 +17,7 @@ export default function App() {
   const [listening, setListening] = useState(false)
   const [finals, setFinals] = useState<string[]>([])
   const [interim, setInterim] = useState('')
-  const [checking, setChecking] = useState(false)
+  const [checking, setChecking] = useState<false | string>(false)
   const [exchanges, setExchanges] = useState<Exchange[]>([])
   const [text, setText] = useState('')
   const [images, setImages] = useState<string[]>([])
@@ -84,7 +84,7 @@ export default function App() {
     const id = uid()
     const started = performance.now()
     let created = false
-    setChecking(true)
+    setChecking('checking for a question…')
     const handle = ask(
       s,
       { mode: 'auto', transcript: fullTranscript(), newSpeech, history: history() },
@@ -101,6 +101,7 @@ export default function App() {
             entry.decided = true
             setChecking(false)
           }
+          if (created) patch(id, { note: undefined })
           if (!created) {
             created = true
             setExchanges((xs) => [
@@ -111,6 +112,10 @@ export default function App() {
             patch(id, { answer: snap })
           }
         },
+        onStatus: (st) => {
+          if (created) patch(id, { note: st ?? undefined })
+          else if (st) setChecking(st)
+        },
       },
     )
     autoRef.current = { handle, decided: false, startIdx }
@@ -119,7 +124,7 @@ export default function App() {
       .then(({ text, model }) => {
         if (created) {
           const { q } = splitAnswer(text)
-          patch(id, { answer: text, question: q ?? newSpeech.slice(-160), status: 'done', model })
+          patch(id, { answer: text, question: q ?? newSpeech.slice(-160), status: 'done', model, note: undefined })
         }
       })
       .catch((err) => {
@@ -142,10 +147,15 @@ export default function App() {
       })
   }, [])
 
-  const onSpeechActivity = useCallback(() => {
-    window.clearTimeout(pauseTimer.current)
-    pauseTimer.current = window.setTimeout(runAutoCheck, settingsRef.current.pauseMs)
-  }, [runAutoCheck])
+  const onSpeechActivity = useCallback(
+    (endsQuestion = false) => {
+      window.clearTimeout(pauseTimer.current)
+      // A finished sentence ending in "?" doesn't need the full pause.
+      const wait = endsQuestion ? Math.min(250, settingsRef.current.pauseMs) : settingsRef.current.pauseMs
+      pauseTimer.current = window.setTimeout(runAutoCheck, wait)
+    },
+    [runAutoCheck],
+  )
 
   // ---------- listening ----------
 
@@ -175,7 +185,7 @@ export default function App() {
       onFinal: (t: string) => {
         finalsRef.current = [...finalsRef.current, t]
         setFinals(finalsRef.current)
-        onSpeechActivity()
+        onSpeechActivity(/\?\s*$/.test(t))
       },
       onError: (m: string) => setBanner(m),
       onState: (on: boolean) => {
@@ -241,12 +251,13 @@ export default function App() {
           patch(id, first ? { answer: snap, status: 'streaming', ttft: performance.now() - started } : { answer: snap })
           first = false
         },
+        onStatus: (st) => patch(id, { note: st ?? undefined }),
       },
     )
     handle.done
       .then(({ text, model }) => {
         const { q: detected } = splitAnswer(text)
-        patch(id, { answer: text, status: 'done', model, question: q || detected || '' })
+        patch(id, { answer: text, status: 'done', model, note: undefined, question: q || detected || '' })
       })
       .catch((err) => patch(id, { status: 'error', error: describeError(err) }))
   }
@@ -311,7 +322,7 @@ export default function App() {
       </header>
 
       <button className="transcript" onClick={() => setShowTranscript((v) => !v)}>
-        {checking && <span className="checking">checking for a question…</span>}
+        {checking && <span className="checking">{checking}</span>}
         {showTranscript ? (
           <span className="full">{finals.join(' ')}</span>
         ) : (

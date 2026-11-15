@@ -12,6 +12,7 @@ export interface Exchange {
   error?: string
   model?: string
   ttft?: number
+  note?: string // live status such as "Searching the web…"
 }
 
 export function AnswerCard({ x, defaultOpen }: { x: Exchange; defaultOpen: boolean }) {
@@ -48,6 +49,7 @@ export function AnswerCard({ x, defaultOpen }: { x: Exchange; defaultOpen: boole
               <i />
             </div>
           )}
+          {x.note && live && <div className="note">{x.note}</div>}
           {body && (
             <div className="prose">
               <Markdown text={body} />

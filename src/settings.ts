@@ -7,6 +7,8 @@ export interface Settings {
   model: ModelId
   effort: Effort
   fast: boolean
+  think: boolean
+  webSearch: boolean
   autoAnswer: boolean
   pauseMs: number
   stt: SttProvider
@@ -26,8 +28,10 @@ export const DEFAULTS: Settings = {
   model: 'claude-sonnet-5-5',
   effort: 'low',
   fast: false,
+  think: false,
+  webSearch: true,
   autoAnswer: true,
-  pauseMs: 1300,
+  pauseMs: 800,
   stt: 'webspeech',
   deepgramKey: '',
   lang: 'en-US',
@@ -41,7 +45,12 @@ const KEY = 'meeting-copilot.settings.v1'
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY)
-    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) }
+    if (raw) {
+      const saved = JSON.parse(raw)
+      // 1300ms was the old default; move people who never changed it to the faster one.
+      if (saved.pauseMs === 1300) saved.pauseMs = DEFAULTS.pauseMs
+      return { ...DEFAULTS, ...saved }
+    }
   } catch {}
   return { ...DEFAULTS }
 }

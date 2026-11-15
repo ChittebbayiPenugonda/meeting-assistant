@@ -93,6 +93,8 @@ ${
 
 export interface AskCallbacks {
   onText: (snapshot: string) => void
+  /** e.g. "Searching the web…" while a server tool runs; null when done. */
+  onStatus?: (status: string | null) => void
 }
 
 export interface AskHandle {
@@ -100,34 +102,90 @@ export interface AskHandle {
   abort: () => void
 }
 
+// Thinking adds a pause before the first word. Off by default for speed.
+// Sonnet 5.5 turns it off with `between_tools`; Haiku 5.5 accepts `disabled`;
+// Opus 5.5 always thinks (low effort keeps it short).
+function thinkingFor(s: Settings): Anthropic.Beta.BetaThinkingConfigParam | undefined {
+  if (s.think) return undefined
+  if (s.model === 'claude-sonnet-5-5') return { type: 'between_tools' }
+  if (s.model === 'claude-haiku-5-5') return { type: 'disabled' }
+  return undefined
+}
+
+const WEB_TOOLS: Anthropic.Beta.BetaToolUnion[] = [
+  { type: 'web_search_20260209', name: 'web_search', max_uses: 3 },
+  { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 2 },
+]
+
+const TOOL_STATUS: Record<string, string> = {
+  web_search: 'Searching the web…',
+  web_fetch: 'Reading the page…',
+}
+
 export function ask(settings: Settings, input: AskInput, cb: AskCallbacks): AskHandle {
   const client = new Anthropic({ apiKey: settings.apiKey, dangerouslyAllowBrowser: true, maxRetries: 1 })
-  const system = SYSTEM + (settings.context.trim() ? `\n\n<user_background>\n${settings.context.trim()}\n</user_background>` : '')
+  const system =
+    SYSTEM +
+    (settings.webSearch
+      ? '\n\nYou can search the web and fetch pages. Use them only when the answer depends on current or specific facts you are unsure of (recent events, prices, a company or product, docs for a specific version). Most interview and technical questions need no search: answer them directly.'
+      : '') +
+    (settings.context.trim() ? `\n\n<user_background>\n${settings.context.trim()}\n</user_background>` : '')
   const isHaiku = settings.model === 'claude-haiku-5-5'
+  const thinking = thinkingFor(settings)
+  const messages = buildMessages(input)
 
-  const stream = client.beta.messages.stream({
-    model: settings.model,
-    max_tokens: 16000,
-    system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
-    messages: buildMessages(input),
-    output_config: { effort: settings.effort },
-    ...(settings.fast && settings.model === 'claude-opus-5-5' ? { speed: 'fast' as const } : {}),
-    // If a safety classifier declines, retry on a suitable model instead of failing.
-    ...(isHaiku ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const }),
-  })
+  let current: { abort: () => void } | null = null
+  let aborted = false
+  let full = '' // text across every text block and continuation
 
-  stream.on('text', (_delta, snapshot) => cb.onText(snapshot))
+  const run = async () => {
+    let model: string = settings.model
+    // A long server-tool turn can come back as `pause_turn`; send it back to continue.
+    for (let round = 0; round < 3; round++) {
+      const stream = client.beta.messages.stream({
+        model: settings.model,
+        max_tokens: 16000,
+        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+        messages,
+        output_config: { effort: settings.effort },
+        ...(thinking ? { thinking } : {}),
+        ...(settings.webSearch ? { tools: WEB_TOOLS } : {}),
+        ...(settings.fast && settings.model === 'claude-opus-5-5' ? { speed: 'fast' as const } : {}),
+        // If a safety classifier declines, retry on a suitable model instead of failing.
+        ...(isHaiku ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const }),
+      })
+      current = stream
+      if (aborted) stream.abort()
 
-  const done = stream.finalMessage().then((msg) => {
-    if (msg.stop_reason === 'refusal') throw new Error('Claude declined to answer this one.')
-    const text = msg.content
-      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('')
-    return { text, model: msg.model }
-  })
+      stream.on('streamEvent', (ev) => {
+        if (ev.type === 'content_block_start') {
+          const b = ev.content_block
+          if (b.type === 'server_tool_use') cb.onStatus?.(TOOL_STATUS[b.name] ?? 'Working…')
+          else if (b.type === 'text') cb.onStatus?.(null)
+        }
+      })
+      stream.on('text', (delta) => {
+        full += delta
+        cb.onText(full)
+      })
 
-  return { done, abort: () => stream.abort() }
+      const msg = await stream.finalMessage()
+      model = msg.model
+      if (msg.stop_reason === 'refusal') throw new Error('Claude declined to answer this one.')
+      if (msg.stop_reason !== 'pause_turn') break
+      messages.push({ role: 'assistant', content: msg.content as Anthropic.Beta.BetaContentBlockParam[] })
+    }
+    cb.onStatus?.(null)
+    return { text: full, model }
+  }
+
+  return {
+    done: run(),
+    abort: () => {
+      aborted = true
+      current?.abort()
+    },
+  }
 }
 
 export function describeError(err: unknown): string {
