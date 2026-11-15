@@ -37,7 +37,7 @@ Safari's speech recognition generally doesn't work in a Home Screen web app on i
 
 | Setting | Default | Notes |
 |---|---|---|
-| Model | Opus 5.5 | Sonnet 5.5 and Haiku 5.5 are faster and cheaper |
+| Model | Sonnet 5.5 | Opus 5.5 is smarter but slower; Haiku 5.5 is fastest and cheapest |
 | Thinking effort | Low | Raise it for hard coding problems |
 | Fast mode | Off | Opus only, up to 2.5× faster output at 2× the price |
 | Auto | On | Turn it off to answer only when you tap **Answer** |

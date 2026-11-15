@@ -17,13 +17,13 @@ export interface Settings {
 
 export const MODELS: { id: ModelId; label: string }[] = [
   { id: 'claude-opus-5-5', label: 'Opus 5.5 (smartest)' },
-  { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5 (balanced)' },
+  { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5 (fast, recommended)' },
   { id: 'claude-haiku-5-5', label: 'Haiku 5.5 (fastest, cheapest)' },
 ]
 
 export const DEFAULTS: Settings = {
   apiKey: '',
-  model: 'claude-opus-5-5',
+  model: 'claude-sonnet-5-5',
   effort: 'low',
   fast: false,
   autoAnswer: true,
