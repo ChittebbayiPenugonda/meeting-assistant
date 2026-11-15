@@ -135,18 +135,6 @@ export function SettingsSheet({
           </select>
         </label>
 
-        <label>
-          Answer after a pause of {(s.pauseMs / 1000).toFixed(1)}s
-          <input
-            type="range"
-            min={600}
-            max={3000}
-            step={100}
-            value={s.pauseMs}
-            onChange={(e) => set('pauseMs', Number(e.target.value))}
-          />
-        </label>
-
         <button className="danger" onClick={onClear}>
           Clear transcript and answers
         </button>

@@ -10,7 +10,6 @@ export interface Settings {
   think: boolean
   webSearch: boolean
   autoAnswer: boolean
-  pauseMs: number
   stt: SttProvider
   deepgramKey: string
   lang: string
@@ -31,7 +30,6 @@ export const DEFAULTS: Settings = {
   think: false,
   webSearch: true,
   autoAnswer: true,
-  pauseMs: 800,
   stt: 'webspeech',
   deepgramKey: '',
   lang: 'en-US',
@@ -47,8 +45,6 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(KEY)
     if (raw) {
       const saved = JSON.parse(raw)
-      // 1300ms was the old default; move people who never changed it to the faster one.
-      if (saved.pauseMs === 1300) saved.pauseMs = DEFAULTS.pauseMs
       return { ...DEFAULTS, ...saved }
     }
   } catch {}

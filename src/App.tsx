@@ -34,7 +34,7 @@ export default function App() {
   const wantListenRef = useRef(false)
   const pauseTimer = useRef<number | undefined>(undefined)
   const consumedRef = useRef(0) // number of final segments already checked for questions
-  const autoRef = useRef<{ handle: AskHandle; decided: boolean; startIdx: number } | null>(null)
+  const autoRef = useRef<{ handle: AskHandle; decided: boolean; noQuestion: boolean; startIdx: number } | null>(null)
   const autoPending = useRef(false)
   const wakeLock = useRef<any>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -64,19 +64,13 @@ export default function App() {
       consumedRef.current = finalsRef.current.length
       return
     }
-    const cur = autoRef.current
-    if (cur && cur.decided) {
-      // An answer is streaming; check again once it finishes.
+    if (autoRef.current) {
+      // Never cancel a check in flight (that only makes answers later).
+      // Re-check the newer speech as soon as it finishes.
       autoPending.current = true
       return
     }
-    let startIdx = consumedRef.current
-    if (cur && !cur.decided) {
-      // Still deciding about earlier speech: fold it into a fresh check.
-      cur.handle.abort()
-      startIdx = cur.startIdx
-      autoRef.current = null
-    }
+    const startIdx = consumedRef.current
     const newSpeech = [...finalsRef.current.slice(startIdx), interimRef.current].filter(Boolean).join(' ')
     if (wordCount(newSpeech) < 3) return
     consumedRef.current = finalsRef.current.length
@@ -95,7 +89,10 @@ export default function App() {
           const t = snap.trimStart()
           if (!entry.decided) {
             if (NO_QUESTION.startsWith(t) || t.startsWith(NO_QUESTION)) {
-              if (t.startsWith(NO_QUESTION)) handle.abort()
+              if (t.startsWith(NO_QUESTION)) {
+                entry.noQuestion = true
+                handle.abort()
+              }
               return
             }
             entry.decided = true
@@ -118,7 +115,7 @@ export default function App() {
         },
       },
     )
-    autoRef.current = { handle, decided: false, startIdx }
+    autoRef.current = { handle, decided: false, noQuestion: false, startIdx }
 
     handle.done
       .then(({ text, model }) => {
@@ -136,23 +133,32 @@ export default function App() {
         else setBanner(describeError(err))
       })
       .finally(() => {
-        if (autoRef.current?.handle === handle) {
+        const entry = autoRef.current
+        if (entry?.handle === handle) {
           autoRef.current = null
           setChecking(false)
           if (autoPending.current) {
             autoPending.current = false
+            // The speech it rejected may have been the first half of a question:
+            // check it again together with what came after (within reason).
+            if (entry.noQuestion && finalsRef.current.length - entry.startIdx <= 8) {
+              consumedRef.current = Math.min(consumedRef.current, entry.startIdx)
+            }
             runAutoCheck()
           }
         }
       })
   }, [])
 
+  // Committed speech is checked the instant it arrives. Interim text (which
+  // Safari sometimes holds back from committing) is checked once it stops
+  // changing between words, so we don't fire a request on every syllable.
+  const INTERIM_SETTLE_MS = 300
   const onSpeechActivity = useCallback(
-    (endsQuestion = false) => {
+    (committed: boolean) => {
       window.clearTimeout(pauseTimer.current)
-      // A finished sentence ending in "?" doesn't need the full pause.
-      const wait = endsQuestion ? Math.min(250, settingsRef.current.pauseMs) : settingsRef.current.pauseMs
-      pauseTimer.current = window.setTimeout(runAutoCheck, wait)
+      if (committed) runAutoCheck()
+      else pauseTimer.current = window.setTimeout(runAutoCheck, INTERIM_SETTLE_MS)
     },
     [runAutoCheck],
   )
@@ -180,12 +186,12 @@ export default function App() {
       onInterim: (t: string) => {
         interimRef.current = t
         setInterim(t)
-        if (t) onSpeechActivity()
+        if (t) onSpeechActivity(false)
       },
       onFinal: (t: string) => {
         finalsRef.current = [...finalsRef.current, t]
         setFinals(finalsRef.current)
-        onSpeechActivity(/\?\s*$/.test(t))
+        onSpeechActivity(true)
       },
       onError: (m: string) => setBanner(m),
       onState: (on: boolean) => {

@@ -70,7 +70,7 @@ function buildMessages(input: AskInput): Anthropic.Beta.BetaMessageParam[] {
 
 <already_answered>\n${answered || '(none)'}\n</already_answered>
 
-Does the new speech contain a question, problem or request the user should respond to now (including a coding or technical problem being described), that is not already answered above? Small talk, the user's own speech, and statements with nothing to answer don't count. If there is nothing to answer, reply with exactly ${NO_QUESTION} and nothing else. Otherwise answer it.`,
+Does the new speech contain a question, problem or request the user should respond to now (including a coding or technical problem being described), that is not already answered above? Small talk, the user's own speech, and statements with nothing to answer don't count. If the question is clearly cut off mid-sentence, treat it as nothing to answer yet: you will get the rest moments later. If there is nothing to answer, reply with exactly ${NO_QUESTION} and nothing else. Otherwise answer it.`,
     })
   } else {
     const ask = input.text?.trim()
