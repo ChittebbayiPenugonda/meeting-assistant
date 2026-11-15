@@ -1,65 +1,83 @@
 # Meeting Copilot
 
-A meeting assistant that runs in Safari on your iPhone. Put the phone next to your laptop during a call: it transcribes what it hears, notices when someone asks a question, and shows a short, clear answer from Claude (with code when the question calls for it). You can also type a question, paste a screenshot, or snap a photo of your screen.
+A live assistant for customer calls. Keep your iPhone next to your laptop during a sales, support or customer-success call. It listens, notices when the customer asks something, and puts a short, clear answer on your screen within a second or two, so you can respond confidently without putting anyone on hold.
 
-It's a static web app hosted on GitHub Pages. There's no server and nothing runs on your laptop: the phone talks straight to the Anthropic API with your own key.
+It's powered by Claude. It runs entirely in Safari on your phone, and there's nothing to install on your laptop and no server to run.
 
-## How it works
+## What it does
 
-```
-laptop speaker ──► iPhone mic ──► speech-to-text ──► transcript
-                                   (Safari or Deepgram)     │
-                                                            ▼
-                        every committed phrase (instantly) ──► Claude: "is there a new question here?"
-                                                            │
-                                    NO_QUESTION ◄───────────┤ (discarded)
-                                                            ▼
-                                             streamed answer card on screen
-```
+- **Answers customer questions as they come up.** Pricing, product capabilities, integrations, troubleshooting steps, policy details: each answer opens with a one-line restatement of the question, then a sentence you can say out loud, then a few supporting points.
+- **Knows your business.** Paste product notes, pricing, FAQs, talk tracks or account details into *About me and this call* in Settings, and answers draw on them.
+- **Tells you and the customer apart.** With Deepgram speech recognition, the transcript shows **Me** and **Them**, and only the customer's questions trigger answers.
+- **Looks things up.** When a question needs current or specific facts, Claude can search the web or read a link you paste.
+- **Handles screenshots and photos.** Paste a screenshot of an error, a dashboard or an email, or take a photo of your laptop screen, and ask about it.
+- **Takes typed questions.** Type anything, ask follow-ups like "shorter" or "more detail on the second point", or tap **Answer** to answer the customer's latest question right away.
+- **Shows technical answers properly.** Configuration snippets, API examples and code come back formatted, with a copy button.
 
-- **Listening.** By default it uses Safari's built-in speech recognition, which is free. Deepgram (`nova-3`, streamed over a WebSocket) is optional: it's more accurate on long calls and also works when the app is added to the Home Screen.
-- **Telling you and them apart (Deepgram only).** Deepgram labels each phrase with a speaker. Once you're listening, tell the app which voice is yours: tap **Learn my voice** and talk for a few seconds (whoever speaks most in that window is you), or tap the label on one of your own lines. Your lines are dimmed, never trigger a check, and Claude sees the transcript as `Me:` / `Them:`. Speaker numbers reset when listening restarts or Deepgram reconnects, so the app asks again then. Safari's recognizer can't separate voices, so with it, everything is checked.
-- **Detecting questions.** There's no waiting for silence. Each phrase the recognizer commits goes to Claude immediately, along with the recent transcript and the questions it has already answered. Claude either replies `NO_QUESTION` (the app stops that request after a few tokens and shows nothing) or streams an answer. A check in flight is never cancelled: speech that arrives meanwhile is checked as soon as it finishes, and if the first part was a cut-off question, both parts are checked together. Interim text that Safari hasn't committed yet is checked once it stops changing between words (300 ms).
-- **Answers** start with a `Q:` line restating the question, then a sentence you can say out loud, then up to five bullets, or a code block plus notes on complexity. The newest answer is on top and expanded, and older ones collapse to a single line.
-- **Typing, pasting and photos.** The text box and the image button send whatever you add, plus the transcript, to Claude. With the box empty, the button reads **Answer**, which answers the latest question right away.
-- **Follow-ups.** Recent questions and answers go back to Claude with each request, so "shorter" or "now in Java" works.
-- **Context.** Settings › *About me and this call* is where you put your role, résumé, the job description or the agenda. Answers about you are written in the first person from it.
+## Getting started
 
-## Use it
+1. Open **https://chittebbayipenugonda.github.io/meeting-assistant/** in Safari on your iPhone.
+2. Paste an Anthropic API key from [console.anthropic.com](https://console.anthropic.com). API usage is billed separately from a Claude subscription, so add credits, and set a monthly spend limit there.
+3. Optionally, fill in *About me and this call* with your role, product and anything else the assistant should know.
+4. When the call starts, tap **Start listening** and allow the microphone.
+5. Play the call through your laptop's **speakers**, not headphones, so the phone can hear the customer. Keep the page open; the screen stays on while the app is listening.
 
-1. Open the GitHub Pages URL in **Safari** on your iPhone.
-2. Paste your Anthropic API key (console.anthropic.com). It's saved only in that browser's localStorage.
-3. Tap **Start listening** and allow the microphone.
-4. Use your laptop's **speakers**, not headphones, so the phone can hear the other person. Keep this page open and the screen on (the app holds a screen wake lock while listening).
+### Speech recognition
 
-Safari's speech recognition generally doesn't work in a Home Screen web app on iOS. Either keep using it in a Safari tab, or switch to Deepgram in Settings.
+| Option | Cost | Notes |
+|---|---|---|
+| Safari built-in | Free | Works in a Safari tab, but usually not after "Add to Home Screen". Can't tell speakers apart |
+| Deepgram | Pay as you go (free credit to start) | More accurate on long calls, labels each speaker, works from the Home Screen. Needs a Deepgram API key |
+
+With Deepgram, tell the app which voice is yours once per session. Either tap **Learn my voice** and talk for a few seconds, or tap the speaker label on one of your own lines.
 
 ### Settings
 
 | Setting | Default | Notes |
 |---|---|---|
-| Model | Sonnet 5.5 | Opus 5.5 is smarter but slower; Haiku 5.5 is fastest and cheapest |
-| Thinking effort | Low | Raise it for hard coding problems |
-| Think before answering | Off | Better on hard problems, but delays the first word. Opus always thinks |
-| Web search | On | Claude searches or reads a pasted URL only when a question needs current facts ($10 per 1,000 searches). An org admin may need to allow web search in the Anthropic Console |
-| Fast mode | Off | Opus only, up to 2.5× faster output at 2× the price |
+| Model | Sonnet 5.5 | Opus 5.5 is the most capable but slower; Haiku 5.5 is the fastest and cheapest |
+| Thinking effort | Low | Raise it for complex technical questions |
+| Think before answering | Off | Improves hard answers but delays the first word. Opus always thinks |
+| Web search | On | Used only when a question needs current facts ($10 per 1,000 searches). An org admin may need to allow it in the Anthropic Console |
+| Fast mode | Off | Opus only: faster output at twice the price |
 | Auto | On | Turn it off to answer only when you tap **Answer** |
 
-**Cost.** Every committed phrase is one small Claude request. The system prompt is cached, and requests with nothing to answer stop after a few tokens. Haiku 5.5 is by far the cheapest choice if you'll use it for hours.
+## How it works
 
-## Develop
+```
+laptop speaker ──► iPhone mic ──► speech-to-text ──► transcript (Me / Them)
+                                   (Safari or Deepgram)          │
+                                                                 ▼
+                              each new phrase from the customer ──► Claude: "anything to answer?"
+                                                                 │
+                                          nothing ◄──────────────┤ (ignored)
+                                                                 ▼
+                                                   answer streams onto the screen
+```
+
+- Each phrase from the customer is sent to Claude as soon as it's transcribed, together with the recent conversation and the questions already answered.
+- If there's nothing to answer, the request stops after a few words and nothing appears. Otherwise the answer streams in, with the newest on top.
+- Requests are never cancelled midway. A question split across two phrases is checked again as a whole.
+- The app is a static site. Your phone talks directly to Anthropic (and to Deepgram, if you use it) with your own keys.
+
+### Cost
+
+Every new phrase from the customer is one small Claude request. On Sonnet 5.5, a busy one-hour call typically comes to around $1–3. Haiku 5.5 is about 20× cheaper. To pay only for questions you choose, turn **Auto** off.
+
+## Privacy
+
+- API keys are stored only in Safari on your phone, and are sent only to the services they belong to.
+- Audio goes to Apple's speech service (Safari) or to Deepgram. Transcripts and images go to Anthropic.
+- Nothing is kept after you reload the page.
+- Recording and transcription rules vary by place and by company. Let customers know when a call is being transcribed, and follow your organization's policies.
+
+## Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-`npm run dev` listens on your LAN too. Safari only allows the microphone on HTTPS or `localhost`, though, so test listening on a phone from the deployed Pages site.
+The app is Vite + React + TypeScript and uses the Anthropic TypeScript SDK in the browser. Safari only allows the microphone on HTTPS or `localhost`, so test listening on a phone with the deployed site.
 
-## Deploy
-
-Push to `main`. `.github/workflows/deploy.yml` builds the site and publishes it to GitHub Pages. In the repo, go to **Settings › Pages** and set **Source** to **GitHub Actions** once.
-
-## Privacy
-
-Your API keys stay in the browser. Audio goes to Apple's speech service (Safari) or to Deepgram. Transcripts and images go to Anthropic. Nothing is saved after you reload the page. Recording-consent laws vary, so tell people on the call that you're transcribing.
+Pushing to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`. For a new fork, set **Settings › Pages › Source** to **GitHub Actions** once.
