@@ -64,6 +64,18 @@ laptop speaker ──► iPhone mic ──► speech-to-text ──► transcrip
 
 Every new phrase from the customer is one small Claude request. On Sonnet 5.5, a busy one-hour call typically comes to around $1–3. Haiku 5.5 is about 20× cheaper. To pay only for questions you choose, turn **Auto** off.
 
+## Practice Pad
+
+**https://chittebbayipenugonda.github.io/meeting-assistant/practice/** is a desktop practice room with an AI interviewer and a shared code pad, for running a mock technical interview on your computer.
+
+- **Voice conversation.** The interviewer talks out loud (a Deepgram Aura voice, or the browser's voice without a Deepgram key) and listens to you through the mic. Your turn ends about 1.4 seconds after you stop talking. You can also use **Done talking**, **Interrupt** or **Mute**, or type instead.
+- **Problems in the pad.** The interviewer writes each coding problem into the editor as a comment with a function stub.
+- **Run code** in Python 3 (Pyodide, downloaded on first use) or JavaScript with **▶ Run** or ⌘/Ctrl+Enter. Infinite loops are stopped automatically.
+- **It sees your work.** Every turn sends the interviewer your current code and latest run output, so it can ask about bugs, edge cases and complexity. It stays quiet while you're just thinking aloud.
+- **Feedback.** **End interview** produces written feedback for each question, with a hire / no-hire signal.
+
+Edit the role, length, voice and question list on the start screen. Keys are shared with Meeting Copilot on the same site. A session costs roughly 10–20 cents in Claude usage, plus roughly 30–50 cents for Deepgram listening and voice.
+
 ## Privacy
 
 - API keys are stored only in Safari on your phone, and are sent only to the services they belong to.
