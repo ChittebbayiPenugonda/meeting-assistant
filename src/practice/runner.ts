@@ -61,7 +61,12 @@ async function run({ id, code }) {
     ns.destroy()
     postMessage({ id, type: 'done', error: false })
   } catch (err) {
-    postMessage({ id, type: 'out', stream: 'stderr', text: String(err && err.message ? err.message : err) + '\\n' })
+    // Drop Pyodide's own frames so the traceback starts at your code.
+    let msg = String(err && err.message ? err.message : err)
+    const lines = msg.split('\\n')
+    const k = lines.findIndex((l) => l.includes('File "<exec>"'))
+    if (k > 0) msg = 'Traceback (most recent call last):\\n' + lines.slice(k).join('\\n')
+    postMessage({ id, type: 'out', stream: 'stderr', text: msg.trimEnd() + '\\n' })
     postMessage({ id, type: 'done', error: true })
   }
 }

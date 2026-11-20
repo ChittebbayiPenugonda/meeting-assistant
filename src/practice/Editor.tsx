@@ -15,15 +15,17 @@ export interface EditorHandle {
 
 const langExt = (l: Lang) => (l === 'python' ? python() : javascript())
 
-export const Editor = forwardRef<EditorHandle, { lang: Lang; onRun: () => void; onChange?: () => void }>(function Editor(
-  { lang, onRun, onChange },
-  ref,
-) {
+export const Editor = forwardRef<
+  EditorHandle,
+  { lang: Lang; onRun: () => void; onRunTests?: () => void; onChange?: () => void }
+>(function Editor({ lang, onRun, onRunTests, onChange }, ref) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const langConf = useRef(new Compartment())
   const runRef = useRef(onRun)
   runRef.current = onRun
+  const testsRef = useRef(onRunTests)
+  testsRef.current = onRunTests
   const changeRef = useRef(onChange)
   changeRef.current = onChange
 
@@ -41,6 +43,13 @@ export const Editor = forwardRef<EditorHandle, { lang: Lang; onRun: () => void; 
                 key: 'Mod-Enter',
                 run: () => {
                   runRef.current()
+                  return true
+                },
+              },
+              {
+                key: "Mod-'",
+                run: () => {
+                  testsRef.current?.()
                   return true
                 },
               },

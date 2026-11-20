@@ -68,9 +68,11 @@ Every new phrase from the customer is one small Claude request. On Sonnet 5.5, a
 
 **https://chittebbayipenugonda.github.io/meeting-assistant/practice/** is a CoderPad-style coding pad for your computer. Nothing to sign in to, and no keys needed.
 
-- **Editor** with syntax highlighting for Python 3 and JavaScript.
-- **Run code** in the browser with **▶ Run** or ⌘/Ctrl+Enter. Python uses Pyodide, which downloads once (a few seconds) on first use. Infinite loops are stopped automatically.
-- **Saves your work.** Each language's code is kept in your browser, so a reload doesn't lose it. **Reset** goes back to the empty starter.
+- **Three panels:** the problem statement on the left, the editor in the middle, test cases and the console on the right.
+- **Problems:** Two Sum, Valid Parentheses, Longest Substring Without Repeating Characters, Merge Intervals, Best Time to Buy and Sell Stock and Group Anagrams are built in. Pick **Custom problem** to paste your own. **Edit** changes any problem statement (Markdown), and **Restore** undoes your changes.
+- **Test cases:** **Run tests** (⌘/Ctrl+') calls your function with each case's arguments and shows passed or failed, your output, any error, and anything printed during that case. Inputs and expected values are editable JSON, and you can add or delete cases. The function name is editable too.
+- **Run** (⌘/Ctrl+Enter) runs the file as a script, with output in the console. Python 3 runs through Pyodide, which downloads once on first use, and JavaScript runs natively. Infinite loops are stopped automatically.
+- **Saved in your browser:** your code for each problem and language, plus any edits to problems and tests.
 
 ## Privacy
 
