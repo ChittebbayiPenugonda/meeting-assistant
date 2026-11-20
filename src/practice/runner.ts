@@ -18,49 +18,63 @@ const fmt = (v) => {
   if (typeof v === 'string') return v
   try { return JSON.stringify(v) ?? String(v) } catch { return String(v) }
 }
-const send = (stream, args) => postMessage({ type: 'out', stream, text: args.map(fmt).join(' ') + '\\n' })
+let current = 0 // id of the run whose output we're capturing
+const send = (stream, args) => postMessage({ id: current, type: 'out', stream, text: args.map(fmt).join(' ') + '\\n' })
 console.log = console.info = console.debug = (...a) => send('stdout', a)
 console.warn = console.error = (...a) => send('stderr', a)
-onmessage = async (e) => {
+async function run({ id, code }) {
+  current = id
   try {
-    await (0, eval)('(async () => {\\n' + e.data.code + '\\n})()')
-    postMessage({ type: 'done', error: false })
+    await (0, eval)('(async () => {\\n' + code + '\\n})()')
+    postMessage({ id, type: 'done', error: false })
   } catch (err) {
     send('stderr', [err && err.stack ? err.stack : String(err)])
-    postMessage({ type: 'done', error: true })
+    postMessage({ id, type: 'done', error: true })
   }
 }
+// One run at a time, in order.
+let queue = Promise.resolve()
+onmessage = (e) => { queue = queue.then(() => run(e.data)) }
 `
 
 const PY_WORKER = `
 importScripts('${PYODIDE_URL}pyodide.js')
 let py = null
+let current = 0 // id of the run whose output we're capturing
 async function ready() {
   if (!py) {
     postMessage({ type: 'status', text: 'Loading Python (first run only)…' })
     py = await loadPyodide({ indexURL: '${PYODIDE_URL}' })
-    py.setStdout({ batched: (s) => postMessage({ type: 'out', stream: 'stdout', text: s + '\\n' }) })
-    py.setStderr({ batched: (s) => postMessage({ type: 'out', stream: 'stderr', text: s + '\\n' }) })
+    py.setStdout({ batched: (s) => postMessage({ id: current, type: 'out', stream: 'stdout', text: s + '\\n' }) })
+    py.setStderr({ batched: (s) => postMessage({ id: current, type: 'out', stream: 'stderr', text: s + '\\n' }) })
     postMessage({ type: 'status', text: null })
   }
   return py
 }
-onmessage = async (e) => {
+async function run({ id, code }) {
   try {
     const p = await ready()
+    current = id
     // Fresh globals each run, like running a new script.
     const ns = p.globals.get('dict')()
-    await p.runPythonAsync(e.data.code, { globals: ns })
+    await p.runPythonAsync(code, { globals: ns })
     ns.destroy()
-    postMessage({ type: 'done', error: false })
+    postMessage({ id, type: 'done', error: false })
   } catch (err) {
-    postMessage({ type: 'out', stream: 'stderr', text: String(err && err.message ? err.message : err) + '\\n' })
-    postMessage({ type: 'done', error: true })
+    postMessage({ id, type: 'out', stream: 'stderr', text: String(err && err.message ? err.message : err) + '\\n' })
+    postMessage({ id, type: 'done', error: true })
   }
 }
+// One run at a time, in order, so the warm-up and a quick first Run can't mix.
+let queue = Promise.resolve()
+onmessage = (e) => { queue = queue.then(() => run(e.data)) }
 `
 
 const workers: Partial<Record<Lang, Worker>> = {}
+let nextId = 1
+// Python is ready once Pyodide has downloaded in the current worker.
+let pyReady = false
+const pyReadyListeners = new Set<() => void>()
 
 function workerFor(lang: Lang): Worker {
   let w = workers[lang]
@@ -68,13 +82,24 @@ function workerFor(lang: Lang): Worker {
     const src = lang === 'python' ? PY_WORKER : JS_WORKER
     w = new Worker(URL.createObjectURL(new Blob([src], { type: 'application/javascript' })))
     workers[lang] = w
+    if (lang === 'python') {
+      pyReady = false
+      w.addEventListener('message', (e) => {
+        if (e.data.type === 'status' && !e.data.text) {
+          pyReady = true
+          pyReadyListeners.forEach((f) => f())
+          pyReadyListeners.clear()
+        }
+      })
+    }
   }
   return w
 }
 
 /** Start loading Python in the background so the first Run is quick. */
 export function warmUp(lang: Lang) {
-  if (lang === 'python') workerFor('python').postMessage({ code: 'pass' })
+  // id 0: no run listens for it, so its messages are ignored.
+  if (lang === 'python') workerFor('python').postMessage({ id: 0, code: 'pass' })
 }
 
 export function runCode(
@@ -86,9 +111,9 @@ export function runCode(
 ): Promise<RunResult> {
   return new Promise((resolve) => {
     const w = workerFor(lang)
+    const runId = nextId++
     let output = ''
     let started = performance.now()
-    let loading = false
     let timer = 0
     const arm = () => {
       window.clearTimeout(timer)
@@ -102,26 +127,33 @@ export function runCode(
         resolve({ output: output + msg, error: true, ms: performance.now() - started, timedOut: true })
       }, timeoutMs)
     }
-    arm()
+    const onReady = () => {
+      onStatus(null)
+      started = performance.now()
+      arm()
+    }
+    if (lang === 'python' && !pyReady) {
+      // Don't count Pyodide's download against the time limit.
+      onStatus('Loading Python (first run only)…')
+      pyReadyListeners.add(onReady)
+    } else {
+      arm()
+    }
     w.onmessage = (e) => {
       const m = e.data
-      if (m.type === 'status') {
-        loading = !!m.text
-        onStatus(m.text)
-        if (!loading) {
-          // Don't count Pyodide's download against the time limit.
-          started = performance.now()
-          arm()
-        }
+      if (m.type === 'status' || m.id !== runId) {
+        return // status is handled above; anything else is from the warm-up or an earlier run
       } else if (m.type === 'out') {
         output += m.text
         onOutput(m.text, m.stream)
       } else if (m.type === 'done') {
         window.clearTimeout(timer)
+        pyReadyListeners.delete(onReady)
+        onStatus(null)
         w.onmessage = null
         resolve({ output, error: m.error, ms: performance.now() - started, timedOut: false })
       }
     }
-    w.postMessage({ code })
+    w.postMessage({ id: runId, code })
   })
 }
